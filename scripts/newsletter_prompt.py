@@ -9,12 +9,16 @@ import sys
 import time
 import os
 import rospy
+import threading
+from threading import Event
+
 
 def show_prompt():    
     """
     This example uses the executeJS method.
     To Test ALTabletService, you need to run the script ON the robot.
     """
+    global exit
     # Get the service ALTabletService.
     try:
         # Javascript script for displaying a prompt
@@ -31,12 +35,13 @@ def show_prompt():
         # by the javascript function ALTabletBinding.raiseEvent(name)
         print('Defining callback')
         def callback(event):
+            global exit
             if not str(event) == 'your@email.de':
                 if event:
                     print(event)
                     file.write(str(event) + '\n')
                 tts.say('Thank you')
-            promise.setValue(True)
+            event.set()
 
         promise = qi.Promise()
 
@@ -48,10 +53,8 @@ def show_prompt():
         print('Executing script')
         tabletService.executeJS(script)
 
-        try:
-            promise.future().hasValue(3000000)
-        except RuntimeError:
-            raise RuntimeError('Timeout: no signal triggered')
+        exit.clear()
+        exit.wait()
 
     except Exception, e:
         print "Error was:", e
@@ -59,6 +62,34 @@ def show_prompt():
 
     # disconnect the signal
     tabletService.onJSEvent.disconnect(signalID)
+
+
+def main():
+    # Save if it is the first time for loading the website
+    first_time = True
+
+    # open file with a timestamp
+    ts = int(time.time())
+    file = open('smile_email_list_'+str(ts)+'.txt', 'w')
+
+    while not rospy.is_shutdown():
+        if rospy.get_param("smile_newsletter",False):
+            # Display a website to insert the javascript into
+            tabletService.showWebview("http://www.smile-smart-it.de")
+            webview_hidden = False
+            # First time wait for the website to load
+            if first_time:
+                time.sleep(3)
+            show_prompt()
+            rospy.sleep(0.5)
+
+            first_time = False
+        else:
+            if not webview_hidden:
+                tabletService.hideWebview()
+                webview_hidden = True
+
+    file.close()
 
 
 if __name__ == "__main__":
@@ -75,12 +106,14 @@ if __name__ == "__main__":
     global tabletService
     global tts
     global webview_hidden
+    global shutdown_checker
 
     # The file to save in
     global file
 
-    # Promise to comunicate between threads
-    global promise
+    # Event to communicate between threads
+    global exit
+    exit = Event()
 
     # Is the webview hidden?
     webview_hidden = True
@@ -90,25 +123,19 @@ if __name__ == "__main__":
 
     rospy.init_node('pepper_ros_server')
 
-    # Save if it is the first time for loading the website
-    first_time = True
+    shutdown_checker = True
 
-    # open file with a timestamp
-    ts = int(time.time())
-    file = open('smile_email_list_'+str(ts)+'.txt', 'w')
+    t1 = threading.Thread(target=main)
+    t1.start()
 
     while not rospy.is_shutdown():
-        # Display a website to insert the javascript into
-        tabletService.showWebview("http://www.smile-smart-it.de")
-        webview_hidden = False
-        # First time wait for the website to load
-        if first_time:
-            time.sleep(3)
-        show_prompt()
-        rospy.sleep(0.5)
+        print('inhere')
+        if not rospy.get_param("smile_newsletter",False):
+            exit.set()
+            print('outhere')
+        time.sleep(1)
 
-        first_time = False
-
-    # Hide the web view
+    # Stop thread and hide webview
     tabletService.hideWebview()
-    file.close()
+    exit.set()
+    t1.join()
