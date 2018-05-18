@@ -19,6 +19,7 @@ def show_prompt():
     To Test ALTabletService, you need to run the script ON the robot.
     """
     global exit
+    global file
     # Get the service ALTabletService.
     try:
         # Javascript script for displaying a prompt
@@ -41,7 +42,7 @@ def show_prompt():
                     print(event)
                     file.write(str(event) + '\n')
                 tts.say('Thank you')
-            event.set()
+            exit.set()
 
         promise = qi.Promise()
 
@@ -68,17 +69,23 @@ def main():
     # Save if it is the first time for loading the website
     first_time = True
 
+    # Is the webview hidden?
+    webview_hidden = True
+
     # open file with a timestamp
     ts = int(time.time())
+    global file
     file = open('smile_email_list_'+str(ts)+'.txt', 'w')
 
     while not rospy.is_shutdown():
-        if rospy.get_param("smile_newsletter",False):
+        if rospy.get_param("/pepper_robot/smile_newsletter",False):
             # Display a website to insert the javascript into
             tabletService.showWebview("http://www.smile-smart-it.de")
             webview_hidden = False
             # First time wait for the website to load
             if first_time:
+                time.sleep(9)
+            else:
                 time.sleep(3)
             show_prompt()
             rospy.sleep(0.5)
@@ -105,7 +112,6 @@ if __name__ == "__main__":
 
     global tabletService
     global tts
-    global webview_hidden
     global shutdown_checker
 
     # The file to save in
@@ -114,9 +120,6 @@ if __name__ == "__main__":
     # Event to communicate between threads
     global exit
     exit = Event()
-
-    # Is the webview hidden?
-    webview_hidden = True
 
     tabletService = session.service("ALTabletService")
     tts = session.service("ALTextToSpeech")
@@ -130,7 +133,7 @@ if __name__ == "__main__":
 
     while not rospy.is_shutdown():
         print('inhere')
-        if not rospy.get_param("smile_newsletter",False):
+        if not rospy.get_param("/pepper_robot/smile_newsletter",False):
             exit.set()
             print('outhere')
         time.sleep(1)
